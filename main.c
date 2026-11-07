@@ -8,7 +8,9 @@
 #define MAX_LEN 1024
 
 // TODO:
-//      Fix the draw_func function to make it calculate x and y values better
+//      Fix the draw_func function to make it calculate x and y values better YUH!
+//      Add an option to parse equations from the command line?
+//      Current operations i want to support: + - * / () ^ log 
 
 
 // Each possible braille byte in order
@@ -46,7 +48,7 @@ const int add_bit_lookup_table[2][4] =
 };
 
 struct drawable_func {
-    double (*func)(double);
+    float (*func)(float);
     struct drawable_func *next;
 };
 
@@ -167,11 +169,12 @@ void draw_line(int x1, int y1, int x2, int y2, struct screen *screen_info) {
     }
 }
 
-int has_asymptote_between(double (*func)(double), double x1, double x2) {
-    double increment = fabs(x1 - x2) / 10;
+int has_asymptote_between(float (*func)(float), double x1, double x2) {
+    int threshold = 1000;
+    double increment = fabs(x1 - x2) / 100;
     for (double i = min(x1, x2); i <= max(x1, x2); i += increment) {
         double val = func(i);
-        if (val == INFINITY || val == -INFINITY) {
+        if (val > threshold || val < -threshold) {
             return true;
         }
         
@@ -179,7 +182,7 @@ int has_asymptote_between(double (*func)(double), double x1, double x2) {
     return 0;
 }
 
-void draw_func(double (*func)(double), struct screen *sc) {
+void draw_func(float (*func)(float), struct screen *sc) {
     int min_x = -(sc->width / 2) - sc->x_offset;
     int max_x = sc->width + min_x;
     char dbs[1024];
@@ -279,14 +282,14 @@ void change_y_zoom(struct screen *screen_info, double amount) {
     draw_funcs(screen_info);
 }
 
-struct drawable_func *init_drawable_func(double (*func)(double)) {
+struct drawable_func *init_drawable_func(float (*func)(float)) {
     struct drawable_func *f = malloc(sizeof(struct drawable_func));
     f->func = func;
     f->next = NULL;
     return f;
 }
 
-void add_func(double (*func)(double), struct screen *sc) {
+void add_func(float (*func)(float), struct screen *sc) {
     struct drawable_func *new_func = init_drawable_func(func);
     struct drawable_func *curr_f = sc->func_head;
     if (curr_f == NULL) {
@@ -299,39 +302,48 @@ void add_func(double (*func)(double), struct screen *sc) {
     curr_f->next = new_func;
 }
 
-double ret_x(double n) {
+float ret_x(float n) {
     return n;
 }
 
-double simple_parabola(double n) {
+float simple_parabola(float n) {
     return n * n + 1;
 }
 
-double parabola2(double n) {
+float parabola2(float n) {
     return 1.0/2 * n * n;
 }
 
-double cubic(double n) {
+float cubic(float n) {
     return n * n * n - 1;
 }
 
-double double_num(double n) {
+float double_num(float n) {
     return n * 2;
 }
 
-double return_num(double n) {
+float return_num(float n) {
     return n;
 }
 
 
-double exponent(double n) {
+float exponent(float n) {
     if (n > 10) {
         return 1000;
     }
     return pow(2, n);
 }
 
-double hyperbola(double n) {
+float mini_exponent(float n) {
+    if (n > 20) {
+        return 1000;
+    } else if (n < -20) {
+        return 0;
+    }
+    return powf(1.5, n);
+}
+
+float hyperbola(float n) {
     if (fabs(n) < 0.01) {
         if (n > 0) {
             return INFINITY;
@@ -341,9 +353,25 @@ double hyperbola(double n) {
     return (double)(1) / n;
 }
 
+float hyperbola_tangent(float n) {
+    return 2 - n;
+}
+
+float hyperbola_tangent_2(float n) {
+    return -2 - n;
+}
 
 
-int main(void) {
+
+
+
+double parse_expression(char *exp, double x) {
+    printf("%s\n", exp);
+    int idx = 1;
+}
+
+
+int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
     initscr();
     // Characters don't get drawn on screen while typing
@@ -368,20 +396,30 @@ int main(void) {
     struct screen sc;
     sc.width = x_pixels;
     sc.height = y_pixels;
-    sc.x_zoom = 10;
-    sc.y_zoom = 10;
+    sc.x_zoom = 16;
+    sc.y_zoom = 16;
     sc.x_offset = 0;
     sc.y_offset = 0;
     //df->next = df2;
     //sc.func_head = df;
     
     add_func(hyperbola, &sc);
-    //add_func(exponent, &sc);
-    add_func(simple_parabola, &sc);
+    add_func(hyperbola_tangent, &sc);
+    add_func(hyperbola_tangent_2, &sc);
+    //add_func(mini_exponent, &sc);
+    //add_func(simple_parabola, &sc);
     //add_func(parabola2, &sc);
-    add_func(cubic, &sc);
-    add_func(double_num, &sc);
-    //add_func(ret_x, &sc);
+    //add_func(cubic, &sc);
+    //add_func(sin, &sc);
+    //add_func(double_num, &sc);
+    add_func(ret_x, &sc);
+    // This seems to make it draw nicer for some reason?
+    /*
+    for (int i = 0; i < 3; i++)  {
+        change_x_zoom(&sc, sc.x_zoom);
+        change_y_zoom(&sc, sc.y_zoom);
+    }
+    */
     draw_funcs(&sc);
     char ch = ' ';
     char *buf = malloc(1024);
@@ -413,12 +451,14 @@ int main(void) {
             snprintf(buf, 1024, "CENTER: x--%d--, y--%d--", sc.x_offset, sc.y_offset);
             mvprintw(0, 0, buf);
         }
-
         else {
+            attron(COLOR_PAIR(1));
             mvprintw(0, 0, "INVALID COMMAND");
         }
-
     }
     wchar_t test_ch = mvinch(2, 0);
     endwin();
+    for (int i = 1; i < argc; i++) {
+        parse_expression(argv[i], 0);
+    }
 }

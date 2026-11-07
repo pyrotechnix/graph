@@ -1,2 +1,2 @@
 a.out: main.c
-	gcc main.c -lncursesw -lm
+	gcc main.c -lncursesw -lm -O3
